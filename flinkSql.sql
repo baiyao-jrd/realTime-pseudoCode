@@ -431,4 +431,145 @@ create table dwd_trade_order_cancel_detail (
     'properties.bootstrap.servers' = 'zoo1:9092',
     'key.format' = 'json',
     'value.format' = 'json'
-)
+);
+
+create table dwd_trade_order_detail (
+    id string,
+    order_id string,
+    user_id string,
+    sku_id string,
+    sku_name string,
+    province_id string,
+    actvity_id string,
+    activity_rule_id string,
+    coupon_id string,
+    date_id string,
+    create_time string,
+    source_id string,
+    source_type_code string,
+    source_type_name string,
+    sku_name string,
+    split_original_amount string,
+    split_activity_amount string,
+    split_coupon_amount string,
+    split_total_amount string,
+    ts string,
+    row_op_ts timestamp_ltz(3)
+) with (
+    'connector' = 'kafka',
+    'topic' = 'dwd_trade_order_detail',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'properties.group.id' = 'dwd_trade_pay_detail_suc',
+    'scan.startup.mode' = 'group-offsets',
+    'format' = 'json'
+);
+
+create table topic_db (
+    `database` string,
+    `table` string,
+    `type` string,
+    `ts` string,
+    `old` map<string, string>,
+    `data` map<string, string>,
+    proc_time as proctime()
+) with (
+    'connector' = 'kafka',
+    'topic' = 'topic_db',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'properties.group.id' = 'dwd_trade_pay_detail_suc',
+    'scan.startup.mode' = 'group-offsets',
+    'format' = 'json'
+);
+
+select
+    data['user_id'] user_id,
+    data['order_id'] order_id,
+    data['payment_type'] payment_type,
+    data['callback_time'] callback_time,
+    `proc_time`,
+    ts
+from topic_db
+where `table` = 'payment_info' and `type` = 'update' and data['payment_status'] = '1602';
+
+
+create table base_dic (
+    dic_code string,
+    dic_name string,
+    primary key(dic_code) not enforced
+) with (
+    'connector' = 'jdbc',
+    'driver' = 'com.mysql.cj.jdbc.Driver',
+    'url' = 'jdbc:mysql://zoo1:3306/gmall',
+    'table-name' = 'base_dic',
+    'lookup.cache.max-rows' = '200',
+    'lookup.cache.ttl' = '1 hour',
+    'username' = 'root',
+    'password' = '123456'
+);
+
+select
+    od.id order_detail_id,
+    od.order_id,
+    od.user_id,
+    od.sku_id,
+    od.sku_name,
+    od.province_id,
+    od.province_rule_id,
+    od.coupon_id,
+
+    pi.payment_type payment_type_code,
+    
+    dic.dic_name payment_type_name,
+
+    pi.callback_time,
+
+    od.source_id,
+    od.source_type_code,
+    od.source_type_name,
+    od.sku_num,
+    od.split_original_amount,
+    od.split_activity_amount,
+    od.split_coupon_amount,
+    od.split_total_amount split_payment_amount,
+    pi.ts,
+    od.row_op_ts row_op_ts
+from dwd_trade_order_detail od
+join payment_info pi on pi.order_id = od.order_id
+join `base_dic` for system_time as of pi.proc_time as dic on pi.payment_type = dic.dic_code;
+
+
+create table dwd_trade_pay_detail_suc (
+    order_detail_id string,
+    order_id,
+    user_id,
+    sku_id,
+    sku_name,
+    province_id,
+    activity_id,
+    activity_rule_id,
+    coupon_id,
+
+    payment_type_code,
+    
+    payment_type_name,
+
+    callback_time,
+
+    source_id,
+    source_type_code,
+    source_type_name,
+    sku_num,
+    split_original_amount,
+    split_activity_amount,
+    split_coupon_amount,
+    split_payment_amount,
+    ts,
+    row_op_ts timestamp_ltz(3)
+    primary key(order_detail_id) not enforced
+) with (
+    'connector' = 'upsert-kafka',
+    'topic' = 'dwd_trade_pay_detail_suc',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'key.format' = 'json',
+    'value.format' = 'json'
+);
