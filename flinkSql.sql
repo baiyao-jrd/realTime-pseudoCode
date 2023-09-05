@@ -573,3 +573,118 @@ create table dwd_trade_pay_detail_suc (
     'key.format' = 'json',
     'value.format' = 'json'
 );
+
+create table topic_db (
+    `database` string,
+    `table` string,
+    `type` string,
+    `ts` string,
+    `old` map<string, string>,
+    `data` map<string, string>,
+    proc_time as proctime()
+) with (
+    'connector' = 'kafka',
+    'topic' = 'topic_db',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'properties.group.id' = 'dwd_trade_order_refund_group',
+    'scan.startup.mode' = 'group-offsets',
+    'format' = 'json'
+);
+
+
+select
+    data['id'] id,
+    data['user_id'] user_id,
+    data['order_id'] order_id,
+    data['sku_id'] sku_id,
+    data['refund_type'] refund_type,
+    data['refund_num'] refund_num,
+    data['refund_amount'] refund_amount,
+    data['refund_reason_type'] refund_reason_type,
+    data['refund_reason_txt'] refund_reason_txt,
+    data['create_time'] create_time,
+    proc_time,
+    ts
+from `topic_db`
+where `table` = 'order_refund_info' and `type` = 'insert';
+
+
+select
+    data['id'] id,
+    data['province_id'] province_id,
+    `old`
+from topic_db
+where `table` = 'order_info' and `type` = 'update'
+and data['order_status'] = '1005' and `old`['order_status'] is not null;
+
+create table base_dic (
+    dic_code string,
+    dic_name string,
+    primary key (dic_code) not enforced
+) with (
+    'connector' = 'jdbc',
+    'driver' = 'com.mysql.cj.jdbc.Driver',
+    'url' = 'jdbc:mysql://zoo1:3306/gmall',
+    'table-name' = 'base_dic',
+    'lookup.cache.max-rows' = '200',
+    'lookup.cache.ttl' = '1 hour',
+    'username' = 'root',
+    'password' = '123456'
+);
+
+select  
+    ri.id,
+    ri.user_id,
+    ri.order_id,
+    ri.sku_id,
+
+    oi.province_id,
+    
+    date_format(ri.create_time, 'yyyy-MM-dd') date_id,
+    ri.create_time,
+    ri.refund_type,
+    type_dic.dic_name,
+    ri.refund_reason_type,
+    
+    reason_dic.dic_name,
+
+    ri.refund_reason_txt,
+    ri.refund_num,
+    ri.refund_amount,
+    ri.ts,
+    current_row_timestamp() row_op_ts
+from order_refund_info ri
+join order_info oi on ri.order_id = oi.id
+join base_dic for system_time as of ri.proc_time as reason_dic
+on ri.refund_reason_type = reason_dic.dic_code;
+
+
+create table dwd_trade_order_refund (
+    id,
+    user_id,
+    order_id,
+    sku_id,
+
+    province_id,
+    
+    date_id,
+    create_time,
+    refund_type_code,
+    refund_type_name,
+    refund_reason_type_code,
+    
+    refund_reason_type_name,
+
+    refund_reason_txt,
+    refund_num,
+    refund_amount,
+    ts,
+    row_op_ts timestamp_ltz(3),
+    primary key(id) not enforced
+) with (
+    'connector' = 'upsert-kafka',
+    'topic' = 'dwd_trade_order_refund',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'key.format' = 'json',
+    'value.format' = 'json'
+);
