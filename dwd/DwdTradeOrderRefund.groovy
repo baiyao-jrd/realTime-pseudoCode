@@ -1,6 +1,11 @@
 ﻿DwdTradeOrderRefund
 
--> 交易域退单事实表
+-> 交易域退单事务事实表
+// 总体思路: 
+// 从kafka的topic_db主题中读取业务数据, 然后筛选退单表order_refund_info的数据, 同时筛选
+// 满足条件的订单表order_info的数据, 建立mysql-lookup字典表, 关联三张表获得退单明细宽表
+
+
 
 // 流环境
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -8,8 +13,10 @@ StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironm
 env.setParallelism(4);
 // 表环境
 StreamTableEnvironment tableEnv = StreamTableEnvironment.create(env);
+
 // 设置状态保留时间
-tableEnv.getconfig().setIdleStateRetention(Duration.ofSeconds(10));
+// 用户执行一次退单操作时，order_refund_info 会插入多条数据，同时 order_info 表的 order_status 数据会发生修改，两张表不存在业务上的时间滞后问题，因此仅考虑可能的乱序即可，ttl 设置为 5s。
+tableEnv.getconfig().setIdleStateRetention(Duration.ofSeconds(5));
 
 env.enableCheckpointing(3000L, CheckpointMode.EXACTLY_ONCE);
 env.getCheckpointConfig().setCheckpointTimeout(60 * 1000L);
@@ -42,6 +49,7 @@ tableEnv
     );
 
 // 从topic_db表中过滤出退单数据
+// 退单业务过程最细粒度的操作: 表示每个订单中的每个sku的退单操作, 因此将order_refund_info作为主表
 Table orderRefundInfo = tableEnv
     .sqlQuery(
         "select\n" +
@@ -63,7 +71,15 @@ Table orderRefundInfo = tableEnv
 
 tableEnv.createTemporaryView("order_refund_info", orderRefundInfo);
 
-// 读取订单表数据, 筛选退单数据
+// 筛选订单表数据, 获取province_id维度
+
+// 退单操作发生时，订单表的 order_status 字段值会由1002（已支付）更新为 1005（退款中）。
+// 订单表中的数据要满足三个条件：
+    1. order_status 为 1005 -> 退款中
+    2. 操作类型为 update
+    3. 更新的字段为 order_status, 该字段发生变化时, 变更数据中 old 字段下 order_status 的值不为 null -> 为1002
+// 这一步是否对订单表数据筛选并不影响查询结果，提前对数据进行过滤是为了减少数据量，减少性能消耗。
+// 退单表order_info
 Table orderInfo = tableEnv
     .sqlQuery(
         "select\n" +
@@ -79,6 +95,7 @@ tableEnv
     .createTemporaryView("order_info", orderInfo);
 
 // 使用lookup方式从mysql读取base_dic字典表并创建动态表
+// 获取退款类型名称以及退款原因类型名称
 tableEnv
     .executeSql(
         "create table base_dic (\n" +
@@ -97,7 +114,7 @@ tableEnv
         ")"
     );
 
-// 关联3张表获得退单宽表
+// 关联3张表获得退单明细宽表
 Table resultTable = tableEnv
     .sqlQuery(
         "select  \n" +
@@ -123,6 +140,8 @@ Table resultTable = tableEnv
         "    current_row_timestamp() row_op_ts\n" +
         "from order_refund_info ri\n" +
         "join order_info oi on ri.order_id = oi.id\n" +
+        "join base_dic for system_time as of ri.proc_time as type_dic\n" +
+        "on ri.refund_type = type_dic.dic_code" +
         "join base_dic for system_time as of ri.proc_time as reason_dic\n" +
         "on ri.refund_reason_type = reason_dic.dic_code"
     );
@@ -163,7 +182,7 @@ tableEnv
         ")"
     );
 
-// 写入kafka
+// 写入kafka退单明细主题
 tableEnv
     .executeSql(
         "insert into dwd_trade_order_refund select * from result_table"
