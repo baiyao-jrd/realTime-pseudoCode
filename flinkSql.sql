@@ -688,3 +688,109 @@ create table dwd_trade_order_refund (
     'key.format' = 'json',
     'value.format' = 'json'
 );
+
+create table topic_db (
+    `database` string,
+    `table` string,
+    `ts` string,
+    `type` string,
+    `old` map<string, string>,
+    `data` map<string, string>,
+    proc_time as proctime()
+) with (
+    'connector' = 'kafka',
+    'topic' = 'topic_db',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'properties.group.id' = 'dwd_trade_refund_pay_success_group',
+    'scan.startup.mode' = 'group-offsets',
+    'format' = 'json'
+);
+
+create table base_dic (
+    dic_code string,
+    dic_name string,
+    primary key(dic_code) not enforced
+) with (
+    'connector' = 'jdbc',
+    'driver' = 'com.mysql.cj.jdbc.Driver',
+    'url' = 'jdbc:mysql://zoo1:3306/gmall',
+    'table-name' = 'base_dic',
+    'lookup.cache.max-rows' = '200',
+    'lookup.cache.ttl' = '1 hour',
+    'username' = 'root',
+    'password' = '123456'
+);
+
+select
+    data['id'] id,
+    data['order_id'] order_id,
+    data['sku_id'] sku_id,
+    data['payment_type'] payment_type,
+    data['callback_time'] callback_time,
+    data['total_amount'] total_amount,
+    proc_time,
+    ts
+from `topic_db`
+where `table` = 'refund_payment' and `type` = 'update'
+and data['refund_status'] = '0701' and `old`['refund_status'] is not null;
+
+select
+    data['id'] id,
+    data['user_id'] user_id,
+    data['province_id'] province_id,
+    `old`
+from topic_db
+where `table` = order_info and `type` = 'update'
+and data['order_status'] = '1006' and `old`['order_status'] is not null;
+
+select
+    data['order_id'] order_id,
+    data['sku_id'] sku_id,
+    data['refund_num'] refund_num,
+    `old`
+from topic_db
+where `table` = 'order_refund_info' and `type` = 'update'
+and data['refund_status'] = '0705' and `old`['refund_status'] is not null;
+
+select
+    rp.id,
+    oi.user_id,
+    rp.order_id,
+    rp.sku_id,
+    oi.province_id,
+    rp.payment_type,
+    dic.dic_name payment_type_name,
+    date_format(rp.callback_time, 'yyyy-MM-dd') date_id,
+    rp.callback_time,
+    ri.refund_num,
+    rp.total_amount,
+    rp.ts,
+    current_row_timestamp() row_op_ts
+from refund_payment rp
+join order_info oi on rp.order_id = oi.id
+join order_refund_info ri on rp.order_id = ri.order_id and rp.sku_id = ri.sku_id
+join base_dic for system_time as of rp.proc_time as dic
+on rp.payment_type = dic.dic_code;
+
+create table dwd_trade_refund_pay_suc (
+    id string,
+    user_id string,
+    order_id string,
+    sku_id string,
+    province_id string,
+    payment_type_code string,
+    payment_type_name string,
+    date_id string,
+    callback_time string,
+    refund_num string,
+    total_amount string,
+    ts string,
+    row_op_ts timestamp_ltz(3),
+    primary key(id) not enforced
+) with (
+    'connector' = 'upsert-kafka',
+    'topic' = 'dwd_trade_refund_pay_suc',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'key.format' = 'json',
+    'value.format' = 'json'
+);
