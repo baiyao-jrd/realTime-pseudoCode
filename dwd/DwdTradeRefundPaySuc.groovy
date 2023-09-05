@@ -106,7 +106,7 @@ tableEnv
     );
 
 // 读取退款表数据, 筛选退款成功数据
-
+// refund_payment
     id  out_trade_no     order_id  sku_id  payment_type  trade_no  total_amount  subject  refund_status  create_time          callback_time        callback_content  
 ------  ---------------  --------  ------  ------------  --------  ------------  -------  -------------  -------------------  -------------------  ------------------
      1  794332583599149      4865      19  1101          (NULL)    35997.00      退款       0701           2020-06-10 19:47:03  2020-06-10 19:47:03  (NULL)            
@@ -133,6 +133,14 @@ Table refundPayment = tableEnv
 tableEnv.createTemporaryView("refund_payment", refundPayment);
 
 // 读取订单表数据, 过滤退款成功订单数据
+// 订单表状态变为'退款完成' -> 1006
+// order_info
+
+    id  consignee     consignee_tel  total_amount  order_status  user_id  payment_way  delivery_address                     order_comment  out_trade_no     trade_body                                                                                                                                                              create_time          operate_time         expire_time          process_status  tracking_no  parent_order_id  img_url                          province_id  activity_reduce_amount  coupon_reduce_amount  original_total_amount  feight_fee  feight_fee_reduce  refundable_time  
+------  ------------  -------------  ------------  ------------  -------  -----------  -----------------------------------  -------------  ---------------  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------  -------------------  -------------------  -------------------  --------------  -----------  ---------------  -------------------------------  -----------  ----------------------  --------------------  ---------------------  ----------  -----------------  -----------------
+  4863  于天达           13286713006    15490.00      1003               28  (NULL)       第16大街第36号楼2单元951门                    描述989578       882158966342598  CAREMiLLE珂曼奶油小方口红 雾面滋润保湿持久丝缎唇膏 M02干玫瑰等4件商品                                                                                                                              2020-06-10 19:47:00  2020-06-10 19:47:02  2020-06-10 20:02:00  (NULL)          (NULL)                (NULL)  http://img.gmall.com/573743.jpg           16  500.00                  30.00                 16002.00               18.00       (NULL)             (NULL)           
+  4864  熊燕彩           13473139694    122.00        1006               88  (NULL)       第14大街第22号楼4单元226门                    描述621364       655816758361257  十月稻田 长粒香大米 东北大米 东北香米 5kg等3件商品                                                                                                                                           2020-06-10 19:47:00  2020-06-14 15:27:46  2020-06-10 20:02:00  (NULL)          (NULL)                (NULL)  http://img.gmall.com/592465.jpg           18  0.00                    0.00                  117.00                 5.00        (NULL)             (NULL)  
+
 Table orderInfo = tableEnv
     .sqlQuery(
         "select\n" +
@@ -148,6 +156,14 @@ Table orderInfo = tableEnv
 tableEnv.createTemporaryView("order_info", orderInfo);
 
 // 读取退单表数据并过滤退款成功数据
+// order_refund_info
+    id  user_id  order_id  sku_id  refund_type  refund_num  refund_amount  refund_reason_type  refund_reason_txt                refund_status  create_time          
+------  -------  --------  ------  -----------  ----------  -------------  ------------------  -------------------------------  -------------  ---------------------
+   748      105      4865      19  1502                  3  35997.00       1301                退款原因具体：8372986279                0705           2020-06-10 19:47:03  
+   749      150      4868      21  1501                  3  9897.00        1302                退款原因具体：7661310557                0705           2020-06-10 19:47:03  
+   750      165      4869      27  1502                  1  129.00         1303                退款原因具体：6988302556                0705           2020-06-11 19:49:37  
+   751       38      4872       4  1502                  1  999.00         1301                退款原因具体：0397070140                0705           2020-06-11 19:49:37  
+
 Table orderRefundInfo = tableEnv
     .sqlQuery(
         "select\n" +
