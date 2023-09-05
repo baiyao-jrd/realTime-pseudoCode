@@ -1,6 +1,6 @@
 ﻿DwdTradeOrderDetail
 
--> 交易域下单事实表
+-> 交易域下单事务事实表
 
 // 流处理环境
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -27,7 +27,7 @@ env.getCheckpointConfig().setCheckpointStorage("hdfs://zoo1:8020/gmall/ck");
 // 设置操作hdfs的用户
 System.setProperty("HADOOP_USER_NAME", baiyao);
 
-// 从kafka的订单预处理主题中读取数据并创建动态表
+// 从kafka的订单预处理dwd_trade_order_pre_process主题中读取数据并创建动态表
 tableEnv
     .executeSql(
         "create table dwd_trade_order_pre_process (\n" +
@@ -68,7 +68,7 @@ tableEnv
         ")"
     );
 
-// 过滤出下单数据
+// 过滤出下单明细数据: 订单表操作类型为 insert 的数据即为订单明细数据
 Table filteredTable = tableEnv
     .sqlQuery(
         "select\n" +
