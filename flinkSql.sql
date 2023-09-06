@@ -794,3 +794,54 @@ create table dwd_trade_refund_pay_suc (
     'key.format' = 'json',
     'value.format' = 'json'
 );
+
+create table page_log (
+    common map<string, string>,
+    page map<string, string>,
+    ts bigint,
+    rowtime as TO_TIMESTAMP(FROM_UNIXTIME(ts/1000)),
+    watermark for rowtime as rowtime - interval '3' second
+) with (
+    'connector' = 'kafka',
+    'topic' = 'dwd_traffic_page_log',
+    'properties.bootstrap.servers' = 'zoo1:9092',
+    'properties.group.id' = 'dws_traffic_keyword_group',
+    'scan.startup.mode' = 'group-offsets',
+    'format' = 'json'
+);
+
+select
+    page['item'] fullword,
+    rowtime
+from page_log
+where page['last_page_id'] = 'search' and page['item_type'] = 'keyword'
+and page['item'] is not null;
+
+
+select
+    keyword,
+    rowtime
+from search_table, lateral table(ik_analyze(fullword) t(keyword));
+
+select
+    date_format(tumble_start(row_time, interval '10' second), 'yyyy-MM-dd HH:mm:ss') stt,
+    date_format(tumble_end(row_time, interval '10' second), 'yyyy-MM-dd HH:mm:ss') edt,
+    search source,
+    keyword,
+    count(*) keyword_count,
+    unix_timestamp() * 1000 ts
+from split_table
+group by tumble(rowtime, interval '10' second), keyword;
+
+drop table if exists dws_traffic_source_keyword_page_view_window;
+
+create table if not exists dws_traffic_source_keyword_page_view_window (
+    stt DateTime,
+    edt DateTime,
+    source String,
+    keyword String,
+    keyword_count UInt64,
+    ts UInt64
+) engine = ReplicatedReplacingMergeTree(ts)
+  partition by toYYYYMMDD(stt)
+  order by (stt, edt, source, keyword);  
