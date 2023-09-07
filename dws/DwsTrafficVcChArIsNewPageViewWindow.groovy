@@ -373,6 +373,28 @@ plStatsDS
 
 env.execute();
 
+/*--------------------------------------------- Clickhouse建表语句 ----------------------------------------------------*/
+
+drop table if exists dws_traffic_vc_ch_ar_is_new_page_view_window;
+create table if not exists dws_traffic_vc_ch_ar_is_new_page_view_window
+(
+  stt     DateTime,
+  edt     DateTime,
+  vc      String,
+  ch      String,
+  ar      String,
+  is_new  String,
+  uv_ct   UInt64,
+  sv_ct   UInt64,
+  pv_ct   UInt64,
+  dur_sum UInt64,
+  uj_ct   UInt64,
+  ts      UInt64
+) engine = ReplacingMergeTree(ts)
+    partition by toYYYYMMDD(stt)
+    order by (stt, edt, vc, ch, ar, is_new);
+
+/*--------------------------------------------- Clickhouse建表语句 ----------------------------------------------------*/
 
 /*--------------------------------------------- 操作Clickhouse的工具类 ----------------------------------------------------*/
 
