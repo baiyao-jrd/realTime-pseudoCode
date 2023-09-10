@@ -36,8 +36,25 @@ TradeStatController {
                     DateFormatUtils.format(new Date(), "yyyyMMdd")
                 );
         }
-        
+
         List<TradeProvinceOrderAmount> provinceOrderAmountList = tradeStatService.getProvinceAmount(date);
+
+        // {
+        //     "status": 0,
+        //     "data": {
+        //         "mapData": [
+        //             {
+        //                 "name": "北京",
+        //                 "value": 6269
+        //             },
+        //             {
+        //                 "name": "天津",
+        //                 "value": 5752
+        //             }
+        //         ],
+        //         "valueName": "交易额"
+        //     }
+        // }
 
         Map resMap = new HashMap();
         resMap.put("status",0);
